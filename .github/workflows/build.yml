@@ -26,7 +26,7 @@ jobs:
           flutter create --org com.family --project-name family_meal_planner .
           flutter pub add "flutter_local_notifications:^17.2.4" timezone intl url_launcher shared_preferences
 
-      - name: Enable Core Library Desugaring for Android
+      - name: Configure Android Build with CompileSdk 36
         run: |
           cat << 'EOF' > android/app/build.gradle
           plugins {
@@ -37,7 +37,7 @@ jobs:
 
           android {
               namespace = "com.family.family_meal_planner"
-              compileSdk = 34
+              compileSdk = 36
               ndkVersion = flutter.ndkVersion
 
               compileOptions {
