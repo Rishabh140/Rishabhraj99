@@ -3,6 +3,9 @@ name: Build Family Meal Planner APK
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -491,4 +494,372 @@ jobs:
                             ],
                           ),
                           OutlinedButton.icon(
-                            styl
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              side: const BorderSide(color: Colors.indigo),
+                            ),
+                            onPressed: _showActiveUserDialog,
+                            icon: const Icon(Icons.sync, size: 16),
+                            label: const Text("Switch"),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Date Navigator
+                    Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.chevron_left),
+                            onPressed: () => setState(() => selectedDate =
+                                selectedDate.subtract(const Duration(days: 1))),
+                          ),
+                          InkWell(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: selectedDate,
+                                firstDate: DateTime.now().subtract(const Duration(days: 90)),
+                                lastDate: DateTime.now().add(const Duration(days: 90)),
+                              );
+                              if (picked != null) setState(() => selectedDate = picked);
+                            },
+                            child: Row(
+                              children: [
+                                const Icon(Icons.calendar_today, size: 16, color: Colors.indigo),
+                                const SizedBox(width: 8),
+                                Text(
+                                  DateFormat('EEE, d MMM yyyy').format(selectedDate),
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.chevron_right),
+                            onPressed: () => setState(() =>
+                                selectedDate = selectedDate.add(const Duration(days: 1))),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+
+                    // Meal List
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        children: meals.map((meal) {
+                          int yesCount =
+                              memberNames.where((m) => getEffectiveValue(m, meal)).length;
+                          return Card(
+                            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            elevation: 2,
+                            child: ExpansionTile(
+                              initiallyExpanded: true,
+                              title: Text(
+                                "$meal — $yesCount / ${memberNames.length} Yes",
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              children: memberNames.map((member) {
+                                bool isYes = getEffectiveValue(member, meal);
+                                bool isExplicit = isExplicitlySet(member, meal);
+                                bool isMe = member == activeUser;
+                                final avatar = memberAvatars[member] ?? '👤';
+
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: isMe ? Colors.indigo.shade100 : Colors.grey.shade200,
+                                    child: Text(avatar, style: const TextStyle(fontSize: 20)),
+                                  ),
+                                  title: Row(
+                                    children: [
+                                      Text(member, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                      if (isMe)
+                                        Container(
+                                          margin: const EdgeInsets.only(left: 8),
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.indigo.shade50,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: Colors.indigo.shade200),
+                                          ),
+                                          child: const Text('You', style: TextStyle(fontSize: 10, color: Colors.indigo, fontWeight: FontWeight.bold)),
+                                        ),
+                                    ],
+                                  ),
+                                  subtitle: Text(
+                                    isExplicit ? "Explicit Choice" : "Default Preference",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isExplicit ? Colors.indigo : Colors.black54,
+                                      fontWeight: isExplicit ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                  ),
+                                  trailing: isMe
+                                      ? Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            ChoiceChip(
+                                              label: const Text("Yes"),
+                                              selected: isYes,
+                                              selectedColor: Colors.green.shade200,
+                                              onSelected: (_) => setSelection(member, meal, true),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            ChoiceChip(
+                                              label: const Text("No"),
+                                              selected: !isYes,
+                                              selectedColor: Colors.red.shade200,
+                                              onSelected: (_) => setSelection(member, meal, false),
+                                            ),
+                                          ],
+                                        )
+                                      : Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: isYes ? Colors.green.shade50 : Colors.red.shade50,
+                                            borderRadius: BorderRadius.circular(16),
+                                            border: Border.all(color: isYes ? Colors.green.shade300 : Colors.red.shade300),
+                                          ),
+                                          child: Text(
+                                            isYes ? "Yes" : "No",
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                              color: isYes ? Colors.green.shade800 : Colors.red.shade800,
+                                            ),
+                                          ),
+                                        ),
+                                );
+                              }).toList(),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+
+          class FamilySettingsScreen extends StatefulWidget {
+            final List<String> currentNames;
+            final Map<String, String> currentAvatars;
+            final Map<String, Map<String, bool>> defaults;
+            final List<String> meals;
+            final Function(List<String>, Map<String, String>, Map<String, Map<String, bool>>) onSave;
+            final Future<void> Function() onTestNotification;
+
+            const FamilySettingsScreen({
+              super.key,
+              required this.currentNames,
+              required this.currentAvatars,
+              required this.defaults,
+              required this.meals,
+              required this.onSave,
+              required this.onTestNotification,
+            });
+
+            @override
+            State<FamilySettingsScreen> createState() => _FamilySettingsScreenState();
+          }
+
+          class _FamilySettingsScreenState extends State<FamilySettingsScreen> {
+            late List<TextEditingController> _controllers;
+            late List<String> _avatars;
+            late Map<String, Map<String, bool>> _editableDefaults;
+
+            final List<Map<String, String>> avatarChoices = [
+              {'icon': '👨', 'label': 'Male'},
+              {'icon': '👩', 'label': 'Female'},
+              {'icon': '👦', 'label': 'Boy'},
+              {'icon': '👧', 'label': 'Girl'},
+            ];
+
+            @override
+            void initState() {
+              super.initState();
+              _controllers = widget.currentNames
+                  .map((name) => TextEditingController(text: name))
+                  .toList();
+              _avatars = widget.currentNames
+                  .map((name) => widget.currentAvatars[name] ?? '👤')
+                  .toList();
+              _editableDefaults = Map.from(widget.defaults);
+            }
+
+            void _saveSettings() {
+              final newNames = _controllers.map((c) => c.text.trim().isEmpty ? 'Member' : c.text.trim()).toList();
+              Map<String, String> updatedAvatars = {};
+              Map<String, Map<String, bool>> updatedDefaults = {};
+
+              for (int i = 0; i < newNames.length; i++) {
+                final oldName = widget.currentNames[i];
+                final newName = newNames[i];
+                updatedAvatars[newName] = _avatars[i];
+                updatedDefaults[newName] = _editableDefaults[oldName] ??
+                    {'Breakfast': true, 'Tiffin': true, 'Lunch': true, 'Dinner': false};
+              }
+
+              widget.onSave(newNames, updatedAvatars, updatedDefaults);
+              Navigator.pop(context);
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                appBar: AppBar(
+                  title: const Text('Family & Preferences'),
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.check),
+                      tooltip: 'Save',
+                      onPressed: _saveSettings,
+                    ),
+                  ],
+                ),
+                body: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    Card(
+                      color: Colors.indigo.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Notification Alarms', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            const SizedBox(height: 4),
+                            const Text('• 8:00 AM: Breakfast Reminder\n• 10:00 PM: Tiffin Reminder', style: TextStyle(fontSize: 13)),
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              onPressed: () async {
+                                await widget.onTestNotification();
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Test notification dispatched! Check your notification drawer.')),
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.notifications_active),
+                              label: const Text('Test Notification Now'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Family Members (Names & Avatars)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                    const SizedBox(height: 8),
+                    ...List.generate(4, (index) {
+                      final currentName = widget.currentNames[index];
+                      return Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8),
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    backgroundColor: Colors.indigo.shade50,
+                                    child: Text(_avatars[index], style: const TextStyle(fontSize: 22)),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _controllers[index],
+                                      decoration: InputDecoration(
+                                        labelText: 'Member ${index + 1} Name',
+                                        border: const OutlineInputBorder(),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              const Text('Select Profile Icon:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: avatarChoices.map((choice) {
+                                  final icon = choice['icon']!;
+                                  final label = choice['label']!;
+                                  final isSelected = _avatars[index] == icon;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 8.0),
+                                    child: ChoiceChip(
+                                      avatar: Text(icon),
+                                      label: Text(label),
+                                      selected: isSelected,
+                                      selectedColor: Colors.indigo.shade100,
+                                      onSelected: (val) {
+                                        if (val) {
+                                          setState(() => _avatars[index] = icon);
+                                        }
+                                      },
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                              const SizedBox(height: 10),
+                              const Text('Default Preferences:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                              Wrap(
+                                spacing: 8,
+                                children: widget.meals.map((meal) {
+                                  final currentVal = _editableDefaults[currentName]?[meal] ?? true;
+                                  return FilterChip(
+                                    label: Text('$meal: ${currentVal ? "Yes" : "No"}'),
+                                    selected: currentVal,
+                                    onSelected: (val) {
+                                      setState(() {
+                                        _editableDefaults.putIfAbsent(currentName, () => {});
+                                        _editableDefaults[currentName]![meal] = val;
+                                      });
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 20),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.indigo,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                      onPressed: _saveSettings,
+                      child: const Text('Save All Family Changes', style: TextStyle(fontSize: 16)),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+          EOF
+
+      - name: Build Android APK
+        run: flutter build apk --release --no-shrink
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FamilyMealPlanner-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Create Direct Release Download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.4-${{ github.run_number }}
+          name: Family Meal Planner v1.0.4 (${{ github.run_number }})
+          files: build/app/outputs/flutter-apk/app-release.apk
