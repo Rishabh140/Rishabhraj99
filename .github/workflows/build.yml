@@ -26,7 +26,7 @@ jobs:
           flutter create --org com.family --project-name family_meal_planner .
           flutter pub add "flutter_local_notifications:^17.2.4" timezone intl url_launcher shared_preferences
 
-      - name: Configure Android Build with CompileSdk 36
+      - name: Configure Android Build
         run: |
           cat << 'EOF' > android/app/build.gradle
           plugins {
@@ -54,8 +54,8 @@ jobs:
                   applicationId = "com.family.family_meal_planner"
                   minSdk = 21
                   targetSdk = 34
-                  versionCode = flutter.versionCode
-                  versionName = flutter.versionName
+                  versionCode = 5
+                  versionName = "1.0.4"
                   multiDexEnabled true
               }
 
@@ -121,7 +121,7 @@ jobs:
           </manifest>
           EOF
 
-      - name: Write App Code
+      - name: Write Application with Gender Profiles & Avatars
         run: |
           cat << 'EOF' > lib/main.dart
           import 'dart:convert';
@@ -135,73 +135,9 @@ jobs:
 
           final FlutterLocalNotificationsPlugin localNotifs = FlutterLocalNotificationsPlugin();
 
-          void main() async {
+          void main() {
             WidgetsFlutterBinding.ensureInitialized();
-            tz.initializeTimeZones();
-            tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
-
-            const AndroidInitializationSettings androidSettings =
-                AndroidInitializationSettings('@mipmap/ic_launcher');
-            const InitializationSettings initSettings =
-                InitializationSettings(android: androidSettings);
-
-            await localNotifs.initialize(initSettings);
-            await scheduleDailyMealReminders();
-
             runApp(const FamilyMealPlannerApp());
-          }
-
-          Future<void> scheduleDailyMealReminders() async {
-            final androidImpl = localNotifs.resolvePlatformSpecificImplementation<
-                AndroidFlutterLocalNotificationsPlugin>();
-            if (androidImpl != null) {
-              await androidImpl.requestNotificationsPermission();
-              await androidImpl.requestExactAlarmsPermission();
-            }
-
-            const NotificationDetails notifDetails = NotificationDetails(
-              android: AndroidNotificationDetails(
-                'meal_reminders_id',
-                'Meal Reminders',
-                channelDescription: 'Daily 8:00 AM and 10:00 PM Meal Alarms',
-                importance: Importance.max,
-                priority: Priority.high,
-              ),
-            );
-
-            await localNotifs.zonedSchedule(
-              101,
-              'Breakfast Reminder (8:00 AM)',
-              'Remember to confirm if you want breakfast today!',
-              _nextInstanceOfTime(8, 0),
-              notifDetails,
-              androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-              uiLocalNotificationDateInterpretation:
-                  UILocalNotificationDateInterpretation.absoluteTime,
-              matchDateTimeComponents: DateTimeComponents.time,
-            );
-
-            await localNotifs.zonedSchedule(
-              102,
-              'Tiffin Reminder (10:00 PM)',
-              'Confirm your tiffin preference for tomorrow before bedtime!',
-              _nextInstanceOfTime(22, 0),
-              notifDetails,
-              androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-              uiLocalNotificationDateInterpretation:
-                  UILocalNotificationDateInterpretation.absoluteTime,
-              matchDateTimeComponents: DateTimeComponents.time,
-            );
-          }
-
-          tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
-            final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
-            tz.TZDateTime scheduledDate =
-                tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
-            if (scheduledDate.isBefore(now)) {
-              scheduledDate = scheduledDate.add(const Duration(days: 1));
-            }
-            return scheduledDate;
           }
 
           class FamilyMealPlannerApp extends StatelessWidget {
@@ -212,7 +148,10 @@ jobs:
               return MaterialApp(
                 title: 'Family Meal Planner',
                 debugShowCheckedModeBanner: false,
-                theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo),
+                theme: ThemeData(
+                  useMaterial3: true,
+                  colorSchemeSeed: Colors.indigo,
+                ),
                 home: const MainDashboard(),
               );
             }
@@ -220,51 +159,173 @@ jobs:
 
           class MainDashboard extends StatefulWidget {
             const MainDashboard({super.key});
+
             @override
             State<MainDashboard> createState() => _MainDashboardState();
           }
 
           class _MainDashboardState extends State<MainDashboard> {
             DateTime selectedDate = DateTime.now();
-            final List<String> members = ['Member 1', 'Member 2', 'Member 3', 'Member 4'];
             final List<String> meals = ['Breakfast', 'Tiffin', 'Lunch', 'Dinner'];
 
-            Map<String, Map<String, bool>> defaults = {
-              'Member 1': {'Breakfast': true, 'Tiffin': true, 'Lunch': true, 'Dinner': false},
-              'Member 2': {'Breakfast': true, 'Tiffin': true, 'Lunch': true, 'Dinner': true},
-              'Member 3': {'Breakfast': true, 'Tiffin': false, 'Lunch': true, 'Dinner': true},
-              'Member 4': {'Breakfast': false, 'Tiffin': true, 'Lunch': true, 'Dinner': true},
+            List<String> memberNames = ['Member 1', 'Member 2', 'Member 3', 'Member 4'];
+            Map<String, String> memberAvatars = {
+              'Member 1': '👨',
+              'Member 2': '👩',
+              'Member 3': '👦',
+              'Member 4': '👧',
             };
 
+            String activeUser = 'Member 1';
+            Map<String, Map<String, bool>> defaults = {};
             Map<String, dynamic> explicitData = {};
 
             @override
             void initState() {
               super.initState();
+              _initDefaults();
               _loadPersistedData();
+              _initNotificationsSafely();
+            }
+
+            void _initDefaults() {
+              defaults = {
+                for (var name in memberNames)
+                  name: {'Breakfast': true, 'Tiffin': true, 'Lunch': true, 'Dinner': false}
+              };
+            }
+
+            Future<void> _initNotificationsSafely() async {
+              try {
+                tz.initializeTimeZones();
+                try {
+                  tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
+                } catch (_) {}
+
+                const AndroidInitializationSettings androidSettings =
+                    AndroidInitializationSettings('@mipmap/ic_launcher');
+                const InitializationSettings initSettings =
+                    InitializationSettings(android: androidSettings);
+
+                await localNotifs.initialize(initSettings);
+
+                final androidImpl = localNotifs.resolvePlatformSpecificImplementation<
+                    AndroidFlutterLocalNotificationsPlugin>();
+                if (androidImpl != null) {
+                  await androidImpl.requestNotificationsPermission();
+                  await androidImpl.requestExactAlarmsPermission();
+                }
+
+                await scheduleDailyMealReminders();
+              } catch (_) {}
+            }
+
+            Future<void> scheduleDailyMealReminders() async {
+              const NotificationDetails notifDetails = NotificationDetails(
+                android: AndroidNotificationDetails(
+                  'meal_reminders_id',
+                  'Meal Reminders',
+                  channelDescription: 'Daily 8:00 AM and 10:00 PM Meal Alarms',
+                  importance: Importance.max,
+                  priority: Priority.high,
+                ),
+              );
+
+              // 8:00 AM Breakfast
+              await localNotifs.zonedSchedule(
+                101,
+                'Breakfast Reminder (8:00 AM)',
+                'Remember to update your meal selection for today!',
+                _nextInstanceOfTime(8, 0),
+                notifDetails,
+                androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+                uiLocalNotificationDateInterpretation:
+                    UILocalNotificationDateInterpretation.absoluteTime,
+                matchDateTimeComponents: DateTimeComponents.time,
+              );
+
+              // 10:00 PM Tiffin
+              await localNotifs.zonedSchedule(
+                102,
+                'Tiffin Reminder (10:00 PM)',
+                'Confirm if you need tiffin packed for tomorrow!',
+                _nextInstanceOfTime(22, 0),
+                notifDetails,
+                androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+                uiLocalNotificationDateInterpretation:
+                    UILocalNotificationDateInterpretation.absoluteTime,
+                matchDateTimeComponents: DateTimeComponents.time,
+              );
+            }
+
+            tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
+              final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
+              tz.TZDateTime scheduledDate =
+                  tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+              if (scheduledDate.isBefore(now)) {
+                scheduledDate = scheduledDate.add(const Duration(days: 1));
+              }
+              return scheduledDate;
+            }
+
+            Future<void> _triggerTestNotification() async {
+              const NotificationDetails notifDetails = NotificationDetails(
+                android: AndroidNotificationDetails(
+                  'test_channel',
+                  'Test Notifications',
+                  importance: Importance.max,
+                  priority: Priority.high,
+                ),
+              );
+              await localNotifs.show(
+                999,
+                'Meal Alert Test Active',
+                'Notifications and scheduled meal reminders are working properly.',
+                notifDetails,
+              );
             }
 
             Future<void> _loadPersistedData() async {
-              final prefs = await SharedPreferences.getInstance();
-              final rawDefaults = prefs.getString('saved_defaults');
-              final rawExplicit = prefs.getString('saved_explicit');
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                final savedNames = prefs.getStringList('saved_member_names');
+                final savedAvatarsRaw = prefs.getString('saved_member_avatars');
+                final savedActiveUser = prefs.getString('saved_active_user');
+                final rawDefaults = prefs.getString('saved_defaults');
+                final rawExplicit = prefs.getString('saved_explicit');
 
-              if (rawDefaults != null) {
-                final Map<String, dynamic> decoded = jsonDecode(rawDefaults);
                 setState(() {
-                  defaults = decoded.map((k, v) => MapEntry(k, Map<String, bool>.from(v)));
-                });
-              }
+                  if (savedNames != null && savedNames.length == 4) {
+                    memberNames = savedNames;
+                  }
+                  if (savedAvatarsRaw != null) {
+                    memberAvatars = Map<String, String>.from(jsonDecode(savedAvatarsRaw));
+                  }
+                  if (savedActiveUser != null && memberNames.contains(savedActiveUser)) {
+                    activeUser = savedActiveUser;
+                  } else {
+                    activeUser = memberNames.first;
+                  }
 
-              if (rawExplicit != null) {
-                setState(() {
-                  explicitData = jsonDecode(rawExplicit);
+                  if (rawDefaults != null) {
+                    final Map<String, dynamic> decoded = jsonDecode(rawDefaults);
+                    defaults = decoded.map((k, v) => MapEntry(k, Map<String, bool>.from(v)));
+                  } else {
+                    _initDefaults();
+                  }
+                  if (rawExplicit != null) {
+                    explicitData = jsonDecode(rawExplicit);
+                  }
                 });
-              }
+              } catch (_) {}
             }
 
-            Future<void> _persistExplicit() async {
+            Future<void> _persistAll() async {
               final prefs = await SharedPreferences.getInstance();
+              await prefs.setStringList('saved_member_names', memberNames);
+              await prefs.setString('saved_member_avatars', jsonEncode(memberAvatars));
+              await prefs.setString('saved_active_user', activeUser);
+              await prefs.setString('saved_defaults', jsonEncode(defaults));
               await prefs.setString('saved_explicit', jsonEncode(explicitData));
             }
 
@@ -286,12 +347,76 @@ jobs:
             }
 
             void setSelection(String member, String meal, bool value) {
+              if (member != activeUser) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("Locked: You can only edit meals for $activeUser."),
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+                return;
+              }
               setState(() {
                 explicitData.putIfAbsent(dateKey, () => {});
                 explicitData[dateKey].putIfAbsent(member, () => {});
                 explicitData[dateKey][member][meal] = value;
               });
-              _persistExplicit();
+              _persistAll();
+            }
+
+            void _showActiveUserDialog() {
+              showDialog(
+                context: context,
+                builder: (ctx) {
+                  return AlertDialog(
+                    title: const Text('Who is using this phone?'),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: memberNames.map((name) {
+                        final avatar = memberAvatars[name] ?? '👤';
+                        return ListTile(
+                          leading: Text(avatar, style: const TextStyle(fontSize: 24)),
+                          title: Text(name),
+                          trailing: activeUser == name
+                              ? const Icon(Icons.check_circle, color: Colors.indigo)
+                              : null,
+                          onTap: () {
+                            setState(() => activeUser = name);
+                            _persistAll();
+                            Navigator.pop(ctx);
+                          },
+                        );
+                      }).toList(),
+                    ),
+                  );
+                },
+              );
+            }
+
+            void _openFamilySettings() {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => FamilySettingsScreen(
+                    currentNames: memberNames,
+                    currentAvatars: memberAvatars,
+                    defaults: defaults,
+                    meals: meals,
+                    onSave: (newNames, newAvatars, newDefaults) {
+                      setState(() {
+                        memberNames = newNames;
+                        memberAvatars = newAvatars;
+                        if (!memberNames.contains(activeUser)) {
+                          activeUser = memberNames.first;
+                        }
+                        defaults = newDefaults;
+                      });
+                      _persistAll();
+                    },
+                    onTestNotification: _triggerTestNotification,
+                  ),
+                ),
+              );
             }
 
             void shareToWhatsApp() async {
@@ -300,15 +425,15 @@ jobs:
               sb.writeln("Family Meal Plan — $dateHeader\n");
 
               for (var meal in meals) {
-                var yesList = members.where((m) => getEffectiveValue(m, meal)).toList();
-                String summary = yesList.length == members.length
+                var yesList = memberNames.where((m) => getEffectiveValue(m, meal)).toList();
+                String summary = yesList.length == memberNames.length
                     ? "Everyone"
                     : (yesList.isEmpty ? "None" : yesList.join(", "));
                 sb.writeln("${meal.toUpperCase()}: ${yesList.length} Yes — $summary");
               }
 
               var declinedMembers = <String>[];
-              for (var m in members) {
+              for (var m in memberNames) {
                 for (var meal in meals) {
                   if (isExplicitlySet(m, meal) && !getEffectiveValue(m, meal)) {
                     declinedMembers.add("$m ($meal)");
@@ -316,11 +441,10 @@ jobs:
                 }
               }
               if (declinedMembers.isNotEmpty) {
-                sb.writeln("\nExplicitly Opted Out: ${declinedMembers.join(', ')}");
+                sb.writeln("\nOpted Out (No): ${declinedMembers.join(', ')}");
               }
 
-              final uri = Uri.parse(
-                  "whatsapp://send?text=${Uri.encodeComponent(sb.toString())}");
+              final uri = Uri.parse("whatsapp://send?text=${Uri.encodeComponent(sb.toString())}");
               if (await canLaunchUrl(uri)) {
                 await launchUrl(uri);
               }
@@ -328,124 +452,43 @@ jobs:
 
             @override
             Widget build(BuildContext context) {
+              final activeAvatar = memberAvatars[activeUser] ?? '👤';
+
               return Scaffold(
                 appBar: AppBar(
                   title: const Text('Family Meal Planner'),
                   elevation: 2,
                   actions: [
                     IconButton(
+                      icon: const Icon(Icons.people_alt_outlined),
+                      tooltip: 'Manage Family & Defaults',
+                      onPressed: _openFamilySettings,
+                    ),
+                    IconButton(
                       icon: const Icon(Icons.share),
+                      tooltip: 'Share Plan',
                       onPressed: shareToWhatsApp,
                     ),
                   ],
                 ),
                 body: Column(
                   children: [
+                    // Active Profile Indicator & Switcher
                     Container(
                       color: Colors.indigo.shade50,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.chevron_left),
-                            onPressed: () => setState(() => selectedDate =
-                                selectedDate.subtract(const Duration(days: 1))),
-                          ),
-                          InkWell(
-                            onTap: () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: selectedDate,
-                                firstDate: DateTime.now().subtract(const Duration(days: 90)),
-                                lastDate: DateTime.now().add(const Duration(days: 90)),
-                              );
-                              if (picked != null) setState(() => selectedDate = picked);
-                            },
-                            child: Row(
-                              children: [
-                                const Icon(Icons.calendar_today, size: 16),
-                                const SizedBox(width: 8),
-                                Text(
-                                  DateFormat('EEE, d MMM yyyy').format(selectedDate),
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.chevron_right),
-                            onPressed: () => setState(() =>
-                                selectedDate = selectedDate.add(const Duration(days: 1))),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        children: meals.map((meal) {
-                          int yesCount =
-                              members.where((m) => getEffectiveValue(m, meal)).length;
-                          return Card(
-                            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            elevation: 2,
-                            child: ExpansionTile(
-                              initiallyExpanded: true,
-                              title: Text(
-                                "$meal — $yesCount / ${members.length} Yes",
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                          Row(
+                            children: [
+                              Text(activeAvatar, style: const TextStyle(fontSize: 22)),
+                              const SizedBox(width: 8),
+                              Text(
+                                "Profile: $activeUser",
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.indigo),
                               ),
-                              children: members.map((member) {
-                                bool isYes = getEffectiveValue(member, meal);
-                                bool isExplicit = isExplicitlySet(member, meal);
-
-                                return ListTile(
-                                  title: Text(member, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                  subtitle: Text(
-                                    isExplicit ? "Explicit Choice" : "Default Preference",
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isExplicit ? Colors.indigo : Colors.black54,
-                                    ),
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ChoiceChip(
-                                        label: const Text("Yes"),
-                                        selected: isYes,
-                                        selectedColor: Colors.green.shade200,
-                                        onSelected: (_) => setSelection(member, meal, true),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      ChoiceChip(
-                                        label: const Text("No"),
-                                        selected: !isYes,
-                                        selectedColor: Colors.red.shade200,
-                                        onSelected: (_) => setSelection(member, meal, false),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-          }
-          EOF
-
-      - name: Build Android APK
-        run: flutter build apk --release --no-shrink
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: FamilyMealPlanner-APK
-          path: build/app/outputs/flutter-apk/app-release.apk
+                            ],
+                          ),
+                          OutlinedButton.icon(
+                            styl
