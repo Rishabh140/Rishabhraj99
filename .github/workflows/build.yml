@@ -59,8 +59,8 @@ jobs:
                   applicationId = "com.family.family_meal_planner"
                   minSdk = 21
                   targetSdk = 34
-                  versionCode = 10
-                  versionName = "1.0.9"
+                  versionCode = 11
+                  versionName = "1.1.0"
                   multiDexEnabled true
               }
 
@@ -430,7 +430,6 @@ jobs:
                       return AlertDialog(
                         title: const Text('Switch Profile (PIN Protected)'),
                         content: Column(
-                          mainAxisSize: dynamic;
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             DropdownButtonFormField<String>(
@@ -491,4 +490,4 @@ jobs:
 
                 sb.writeln("▶ ${meal.toUpperCase()}:");
                 sb.writeln("  ✅ Eating (${yesList.length}): ${yesList.isEmpty ? 'None' : yesList.join(', ')}");
-                sb.writel
+                sb.writeln("  ❌ Not Eating (${noList.length}): ${noList.is
